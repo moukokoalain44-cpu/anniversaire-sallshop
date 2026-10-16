@@ -693,7 +693,7 @@ export default function App() {
           </div>
           <div className="partner-logos">
             <div className="jiji-logo">
-              Moeny<span>swift</span>
+              Money<span>swift</span>
             </div>
             <span className="partner-cross">×</span>
             <div className="webmaj-logo">
