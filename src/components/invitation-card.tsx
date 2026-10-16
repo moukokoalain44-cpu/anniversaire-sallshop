@@ -1,5 +1,10 @@
-/** Public editorial invitation. The reserved QR area is deliberately empty. */
-export function InvitationCard() {
+interface InvitationCardProps {
+  guestName?: string
+  guestNickname?: string
+}
+
+/** Public and personalized editorial invitation card. */
+export function InvitationCard({ guestName, guestNickname }: InvitationCardProps = {}) {
   return (
     <article className="editorial-invitation" aria-labelledby="invitation-title">
       <figure className="invitation-polaroid">
@@ -32,12 +37,63 @@ export function InvitationCard() {
         <h2 id="invitation-title" className="invitation-message">
           Sall Shop a le plaisir<br />de vous inviter à la célébration<br />de son <em>anniversaire</em><br />et à son <em>défilé de mode</em>
         </h2>
+
+        {/* Bloc Nominatif : Nom et Pseudo de l'invité */}
+        {(guestName || guestNickname) && (
+          <div
+            style={{
+              margin: '12px 0',
+              padding: '10px 14px',
+              background: 'rgba(212, 175, 55, 0.08)',
+              border: '1px solid rgba(212, 175, 55, 0.35)',
+              borderRadius: '8px',
+              textAlign: 'center',
+            }}
+          >
+            <p
+              style={{
+                fontSize: '10px',
+                letterSpacing: '1.5px',
+                color: '#d4af37',
+                textTransform: 'uppercase',
+                margin: '0 0 4px',
+                fontWeight: 600,
+              }}
+            >
+              INVITÉ(E) CONFIRMÉ(E)
+            </p>
+            <p
+              style={{
+                fontSize: '17px',
+                fontWeight: 700,
+                color: '#f1f0ec',
+                margin: 0,
+                letterSpacing: '0.5px',
+              }}
+            >
+              {guestName || 'Votre Nom'}
+            </p>
+            {guestNickname && (
+              <p
+                style={{
+                  fontSize: '13px',
+                  color: '#d4af37',
+                  margin: '3px 0 0',
+                  fontStyle: 'italic',
+                }}
+              >
+                « {guestNickname} »
+              </p>
+            )}
+          </div>
+        )}
+
         <span className="invitation-divider" aria-hidden="true" />
         <div className="invitation-details">
           <p><time dateTime="2026-10-28T14:30:00Z">Mercredi 28 octobre 2026<br /><span>À 14h30 GMT</span></time></p>
           <p>Boutique Sall Shop · Ouakam, Dakar<br /><span>Après le restaurant nigérien</span></p>
         </div>
-        <div className="invitation-qr-space" role="img" aria-label="Espace vide réservé au QR code" />
+        <div className="invitation-qr-space" role="img" aria-label="Espace réservé au QR code officiel" />
         <p className="invitation-footnote">SUR INVITATION · UN MOMENT À PARTAGER</p>
       </div>
     </article>

@@ -6,17 +6,14 @@ export interface GuestItem {
 }
 
 const DEFAULT_GUESTS: GuestItem[] = [
-  { name: 'Amadou Sall', nickname: 'Le Fondateur' },
-  { name: 'Jiji Tattoo', nickname: 'Partenaire Officiel' },
+  { name: 'Marco SALL', nickname: 'Le Fondateur' },
+  { name: 'Moeny swift', nickname: 'Partenaire Officiel' },
   { name: 'Équipe WEBMAJ', nickname: 'Digital & Style' },
-  { name: 'Moussa Diop', nickname: 'VIP Ouakam' },
-  { name: 'Fatou Ndiaye', nickname: 'Fashion Guest' },
-  { name: 'Alain Moukoko', nickname: 'Invité d’Honneur' },
 ]
 
 export function getSavedGuests(): GuestItem[] {
   try {
-    const raw = localStorage.getItem('sall_guests_list')
+    const raw = localStorage.getItem('sall_guests_list_v3')
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed) && parsed.length > 0) return parsed
@@ -34,7 +31,7 @@ export function addSavedGuest(guest: GuestItem) {
       (g) => g.name.toLowerCase() === guest.name.toLowerCase(),
     )
     const updated = exists ? current : [guest, ...current]
-    localStorage.setItem('sall_guests_list', JSON.stringify(updated))
+    localStorage.setItem('sall_guests_list_v3', JSON.stringify(updated))
     window.dispatchEvent(new Event('sall_guest_added'))
   } catch {
     // ignore

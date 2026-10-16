@@ -13,10 +13,12 @@ export async function generateInvitationPdf({
   invitationId = 'sall-' + Math.random().toString(36).substring(2, 10),
 }: GenerateInvitationParams): Promise<Blob> {
   const publicName = name.trim()
+  const publicNickname = nickname.trim()
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([420, 660])
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
   const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const italic = await pdf.embedFont(StandardFonts.HelveticaOblique)
   const gold = rgb(0.83, 0.69, 0.22)
 
   // Fond noir élégant
@@ -43,7 +45,8 @@ export async function generateInvitationPdf({
     y: number,
     size = 12,
     color = rgb(0.95, 0.94, 0.9),
-  ) => page.drawText(text, { x: 48, y, size, font, color })
+    useFont = font,
+  ) => page.drawText(text, { x: 48, y, size, font: useFont, color })
 
   // Titre SALL SHOP
   page.drawText('SALL SHOP', {
@@ -55,21 +58,29 @@ export async function generateInvitationPdf({
   })
 
   draw('INVITATION PRIVÉE • ANNIVERSAIRE', 558, 10, gold)
-  draw('VOUS FAITES PARTIE DE L’HISTOIRE.', 505, 14)
+  draw('VOUS FAITES PARTIE DE L’HISTOIRE.', 510, 14, rgb(0.95, 0.94, 0.9), bold)
 
-  // Nom de l'invité (filtrage des caractères non-standard pour Helvetica)
+  // Nom de l'invité
   const safeName = publicName
     .replace(/[^\u0020-\u007e\u00a0-\u00ff]/g, '')
     .slice(0, 36)
-  draw(safeName, 465, 20)
+  draw(safeName, 474, 20, rgb(0.98, 0.98, 0.95), bold)
+
+  // Pseudo de l'invité
+  if (publicNickname) {
+    const safeNickname = publicNickname
+      .replace(/[^\u0020-\u007e\u00a0-\u00ff]/g, '')
+      .slice(0, 36)
+    draw(`« ${safeNickname} »`, 450, 14, gold, italic)
+  }
 
   // Date et Lieu
-  draw('Mercredi 28 octobre 2026', 417, 15, gold)
-  draw('À partir de 14h30 GMT', 392)
-  draw('Boutique Sall Shop, Ouakam, Dakar', 353)
-  draw('Après le restaurant nigérien', 332)
+  draw('Mercredi 28 octobre 2026', 408, 15, gold)
+  draw('À partir de 14h30 GMT', 384)
+  draw('Boutique Sall Shop, Ouakam, Dakar', 348)
+  draw('Après le restaurant nigérien', 327)
 
-  // QR Code personnel
+  // QR Code personnel nominatif
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://sallshop.sn'
   const qrUrl = `${origin}/?invitation=${invitationId}`
   const qrDataUrl = await QRCode.toDataURL(qrUrl, {

@@ -693,7 +693,7 @@ export default function App() {
           </div>
           <div className="partner-logos">
             <div className="jiji-logo">
-              jiji<span>tattoo</span>
+              Moeny<span>swift</span>
             </div>
             <span className="partner-cross">×</span>
             <div className="webmaj-logo">
@@ -816,7 +816,10 @@ export default function App() {
               <X size={22} />
             </DialogClose>
           </div>
-          <InvitationCard />
+          <InvitationCard
+            guestName={downloadName || guest?.name}
+            guestNickname={nickname}
+          />
           <form
             className="invitation-download-form"
             onSubmit={(event) => {
