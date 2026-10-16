@@ -14,6 +14,24 @@ import QRCode from 'qrcode'
 function hash(value: string) {
   return createHash('sha256').update(value).digest('hex')
 }
+
+/**
+ * Code d'accès aux invitations.
+ * Priorité : variable d'environnement Netlify > valeur par défaut ci-dessous.
+ */
+const HARDCODED_CODE = 'Sallshop-aniv-vip'
+
+function getInvitationCode(): string {
+  try {
+    const envCode = typeof Netlify !== 'undefined' && Netlify.env
+      ? Netlify.env.get('SALL_INVITATION_CODE')
+      : undefined
+    return (envCode && envCode.trim().length > 0) ? envCode : HARDCODED_CODE
+  } catch {
+    return HARDCODED_CODE
+  }
+}
+
 const program = [
   {
     title: 'Bienvenue chez vous',
@@ -22,7 +40,7 @@ const program = [
       'On se retrouve, on échange et on lance les festivités. La famille Sall Shop est réunie.',
   },
   {
-    title: 'Place à l’énergie',
+    title: 'Place à l\u2019énergie',
     label: 'Animation',
     description:
       'Du son, des surprises et une ambiance à notre image. Le rythme est donné.',
@@ -50,6 +68,8 @@ export default async (req: Request, context: Context) => {
   const headers = { 'Cache-Control': 'no-store' }
   const json = (body: unknown, status = 200) =>
     Response.json(body, { status, headers })
+
+  /* ---------- GET /api/invitation/guests (public) ---------- */
   try {
     const db = database()
     const path = new URL(req.url).pathname
@@ -58,10 +78,14 @@ export default async (req: Request, context: Context) => {
         .from(invitationDownloads).orderBy(invitationDownloads.name, invitationDownloads.nickname)
       return json({ guests })
     }
+
+    /* ---------- POST /api/invitation (login) ---------- */
     if (req.method === 'POST' && path === '/api/invitation') {
       if (req.headers.get('origin') !== new URL(req.url).origin)
         return json({ error: 'Requête non autorisée.' }, 403)
-      const commonCode = Netlify.env.get('SALL_INVITATION_CODE') || 'Sallshop-aniv-vip'
+
+      const commonCode = getInvitationCode()
+
       const bucket = hash(`${context.ip}:${Math.floor(Date.now() / 900000)}`)
       const [attempt] = await db
         .insert(accessAttempts)
@@ -95,7 +119,7 @@ export default async (req: Request, context: Context) => {
         )
       )
         return json(
-          { error: 'Ce code n’est pas reconnu. Vérifiez votre invitation.' },
+          { error: 'Ce code n\u2019est pas reconnu. Vérifiez votre invitation.' },
           401,
         )
       const token = randomBytes(32).toString('hex')
@@ -119,6 +143,8 @@ export default async (req: Request, context: Context) => {
       })
       return json({ guest: { id: guest.id, name: guest.name }, program })
     }
+
+    /* ---------- Session recovery (GET, DELETE, PDF) ---------- */
     const token = context.cookies.get('sall_guest')
     const [guest] = token
       ? await db
@@ -157,6 +183,8 @@ export default async (req: Request, context: Context) => {
     if (!guest) return json({ guest: null }, 401)
     if (!path.endsWith('/pdf'))
       return json({ guest: { id: guest.id, name: guest.name }, program })
+
+    /* ---------- POST /api/invitation/pdf ---------- */
     if (req.method !== 'POST') return json({ error: 'Complétez votre nom et votre pseudo avant le téléchargement.' }, 405)
     if (req.headers.get('origin') !== new URL(req.url).origin)
       return json({ error: 'Requête non autorisée.' }, 403)
@@ -200,24 +228,24 @@ export default async (req: Request, context: Context) => {
       size: 28,
       color: gold,
     })
-    draw('INVITATION PRIVÉE • ANNIVERSAIRE', 558, 10, gold)
-    draw('VOUS FAITES PARTIE DE L’HISTOIRE.', 505, 14)
+    draw('INVITATION PRIV\u00c9E \u2022 ANNIVERSAIRE', 558, 10, gold)
+    draw('VOUS FAITES PARTIE DE L\u2019HISTOIRE.', 505, 14)
     // Standard PDF fonts support French accents; replace unsupported characters in names.
     const safeName = publicName
       .replace(/[^\u0020-\u007e\u00a0-\u00ff]/g, '')
       .slice(0, 36)
     draw(safeName, 465, 20)
     draw('Mercredi 28 octobre 2026', 417, 15, gold)
-    draw('À partir de 14h30 GMT', 392)
+    draw('\u00c0 partir de 14h30 GMT', 392)
     draw('Boutique Sall Shop, Ouakam, Dakar', 353)
-    draw('Après le restaurant nigérien', 332)
+    draw('Apr\u00e8s le restaurant nig\u00e9rien', 332)
     const qr = await QRCode.toDataURL(
       `${new URL(req.url).origin}/?invitation=${guest.id}`,
       { width: 320, margin: 2, errorCorrectionLevel: 'M' },
     )
     const png = await pdf.embedPng(qr)
     page.drawImage(png, { x: 143, y: 131, width: 134, height: 134 })
-    draw('Votre QR code personnel à présenter à l’accueil.', 102, 10)
+    draw('Votre QR code personnel \u00e0 pr\u00e9senter \u00e0 l\u2019accueil.', 102, 10)
     draw('Une invitation. Une personne. Un moment unique.', 64, 9, gold)
     const bytes = Buffer.from(await pdf.save())
     await db.insert(invitationDownloads).values({ invitationId: guest.id, name: publicName, nickname })
@@ -230,7 +258,16 @@ export default async (req: Request, context: Context) => {
           'attachment; filename="invitation-sall-shop.pdf"',
       },
     })
-  } catch {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[invitation] Erreur serveur :', message)
+    // Diagnostic : si la DB n'est pas provisionnée, on le signale clairement
+    if (message.includes('database') || message.includes('connect') || message.includes('ECONNREFUSED') || message.includes('relation')) {
+      return json(
+        { error: 'La base de données n\u2019est pas encore provisionnée. Vérifiez la configuration Netlify Database.' },
+        503,
+      )
+    }
     return json(
       {
         error:
