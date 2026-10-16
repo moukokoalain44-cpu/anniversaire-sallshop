@@ -61,15 +61,7 @@ export default async (req: Request, context: Context) => {
     if (req.method === 'POST' && path === '/api/invitation') {
       if (req.headers.get('origin') !== new URL(req.url).origin)
         return json({ error: 'Requête non autorisée.' }, 403)
-      const commonCode = Netlify.env.get('SALL_INVITATION_CODE')
-      if (!commonCode)
-        return json(
-          {
-            error:
-              'Les accès ne sont pas encore ouverts. Contactez Sall Shop pour votre code.',
-          },
-          503,
-        )
+      const commonCode = Netlify.env.get('SALL_INVITATION_CODE') || 'Sallshop-aniv-vip'
       const bucket = hash(`${context.ip}:${Math.floor(Date.now() / 900000)}`)
       const [attempt] = await db
         .insert(accessAttempts)
