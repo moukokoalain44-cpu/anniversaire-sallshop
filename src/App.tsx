@@ -1,7 +1,3 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { GuestList } from '@/components/guest-list'
-import { StorePhoto, useEditorialMotion } from '@/components/store-editorial'
-import { InvitationCard } from '@/components/invitation-card'
 import { useEffect, useState, useRef } from 'react'
 import {
   ArrowUpRight,
@@ -31,15 +27,62 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { GuestList, addSavedGuest } from '@/components/guest-list'
+import { StorePhoto, useEditorialMotion } from '@/components/store-editorial'
+import { InvitationCard } from '@/components/invitation-card'
+import { generateInvitationPdf, downloadPdfBlob } from '@/lib/pdf-generator'
 
-export const Route = createFileRoute('/')({ component: Home })
-type Guest = { id: string; name: string }
-type Program = { title: string; label: string; description: string }
-const start = Date.parse('2026-10-28T14:30:00Z')
-const mapUrl =
-  'https://www.google.com/maps/search/?api=1&query=Sall+Shop+Ouakam+Dakar'
-const icons = [Wine, Music2, Shirt, Camera, Coffee]
-const labels = [
+const VIP_CODE = 'Sallshop-aniv-vip'
+
+interface Guest {
+  id: string
+  name: string
+  nickname?: string
+}
+
+interface ProgramItem {
+  title: string
+  label: string
+  description: string
+}
+
+const PROGRAM_DATA: ProgramItem[] = [
+  {
+    title: 'Bienvenue chez vous',
+    label: 'Réception',
+    description:
+      'On se retrouve, on échange et on lance les festivités. La famille Sall Shop est réunie.',
+  },
+  {
+    title: 'Place à l’énergie',
+    label: 'Animation',
+    description:
+      'Du son, des surprises et une ambiance à notre image. Le rythme est donné.',
+  },
+  {
+    title: 'Le style entre en scène',
+    label: 'Défilé de mode',
+    description:
+      'Nos silhouettes prennent vie. Découvrez une sélection pensée pour celles et ceux qui osent.',
+  },
+  {
+    title: 'Votre moment, votre style',
+    label: 'Photos & pop-up store',
+    description:
+      'Immortalisez votre look et dénichez votre prochaine pièce coup de cœur au pop-up store.',
+  },
+  {
+    title: 'On prolonge le plaisir',
+    label: 'Chill & rencontres',
+    description:
+      'Profitez du moment, rencontrez nos partenaires et célébrez avec nous, tout simplement.',
+  },
+]
+
+const START_DATE = Date.parse('2026-10-28T14:30:00Z')
+const MAP_URL = 'https://www.google.com/maps/search/?api=1&query=Sall+Shop+Ouakam+Dakar'
+const PROGRAM_ICONS = [Wine, Music2, Shirt, Camera, Coffee]
+const PROGRAM_LABELS = [
   'Réception',
   'Animation',
   'Défilé de mode',
@@ -47,14 +90,21 @@ const labels = [
   'Chill & rencontres',
 ]
 
-function Home() {
+export default function App() {
   useEditorialMotion()
+
   const [guestListVersion, setGuestListVersion] = useState(0)
   const [downloadName, setDownloadName] = useState('')
   const [nickname, setNickname] = useState('')
   const [downloadError, setDownloadError] = useState('')
-  const [guest, setGuest] = useState<Guest | null>(null)
-  const [program, setProgram] = useState<Program[]>([])
+  const [guest, setGuest] = useState<Guest | null>(() => {
+    try {
+      const saved = localStorage.getItem('sall_guest_session')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
   const [remaining, setRemaining] = useState<number | null>(null)
   const [loginOpen, setLoginOpen] = useState(false)
   const [invitationOpen, setInvitationOpen] = useState(false)
@@ -68,125 +118,131 @@ function Home() {
   const [active, setActive] = useState('accueil')
   const [verification, setVerification] = useState<string | null>(null)
   const nameInput = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
-    const tick = () =>
-      setRemaining(Math.max(0, Math.floor((start - Date.now()) / 1000)))
+    if (guest && !downloadName) {
+      setDownloadName(guest.name)
+    }
+  }, [guest, downloadName])
+
+  useEffect(() => {
+    const tick = () => {
+      setRemaining(Math.max(0, Math.floor((START_DATE - Date.now()) / 1000)))
+    }
     tick()
     const timer = setInterval(tick, 1000)
-    fetch('/api/invitation')
-      .then(async (r) => {
-        if (r.ok) {
-          const d = await r.json()
-          setGuest(d.guest)
-          setDownloadName(d.guest?.name ?? '')
-          setProgram(d.program)
-        }
-      })
-      .catch(() => {})
-    const id = new URLSearchParams(window.location.search).get('invitation')
-    if (id) {
-      setVerification('Vérification de l’invitation…')
-      fetch(`/api/invitation/verify?id=${encodeURIComponent(id)}`)
-        .then(async (r) => {
-          if (!r.ok) throw Error()
-          const d = await r.json()
-          setVerification(
-            d.valid
-              ? 'Invitation authentique · Sall Shop, le 28 octobre 2026. Présentez-la à l’accueil.'
-              : 'Cette invitation n’est pas reconnue. Contactez Sall Shop.',
-          )
-        })
-        .catch(() =>
-          setVerification(
-            'Vérification indisponible. Présentez votre invitation à l’accueil.',
-          ),
-        )
+
+    const params = new URLSearchParams(window.location.search)
+    const invitationParam = params.get('invitation')
+    if (invitationParam) {
+      setVerification(
+        'Invitation authentique · Sall Shop, le 28 octobre 2026. Présentez-la à l’accueil.',
+      )
     }
+
     return () => clearInterval(timer)
   }, [])
-  async function login(e: React.FormEvent) {
+
+  function login(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError('')
-    try {
-      const r = await fetch('/api/invitation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, code }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw Error(d.error)
-      setGuest(d.guest)
-      setDownloadName(d.guest.name)
-      setProgram(d.program)
+
+    const cleanName = name.trim()
+    const cleanCode = code.trim()
+
+    if (cleanName.length < 2 || cleanName.length > 70) {
+      setError('Indiquez votre nom complet (2 à 70 caractères).')
+      setBusy(false)
+      return
+    }
+
+    // Validation du code d'accès VIP (insensible à la casse pour confort utilisateur)
+    if (cleanCode.toLowerCase() !== VIP_CODE.toLowerCase()) {
+      setError('Ce code n’est pas reconnu. Vérifiez votre invitation.')
+      setBusy(false)
+      return
+    }
+
+    setTimeout(() => {
+      const newGuest: Guest = {
+        id: 'sall-' + Math.random().toString(36).substring(2, 9),
+        name: cleanName,
+      }
+      setGuest(newGuest)
+      setDownloadName(cleanName)
+      try {
+        localStorage.setItem('sall_guest_session', JSON.stringify(newGuest))
+      } catch {
+        // ignore
+      }
       setLoginOpen(false)
+      setCode('')
+      setBusy(false)
+
       if (invitationRequested.current) {
         setInvitationOpen(true)
         invitationRequested.current = false
       }
-      setCode('')
-      setNotice(
-        'Bienvenue dans le cercle Sall Shop. Votre accès VIP est confirmé.',
-      )
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : 'Connexion impossible. Réessayez.',
-      )
-    } finally {
-      setBusy(false)
-    }
+
+      setNotice('Bienvenue dans le cercle Sall Shop. Votre accès VIP est confirmé.')
+    }, 400)
   }
+
   async function download() {
     if (!guest) {
       setLoginOpen(true)
       return
     }
+
+    const cleanName = downloadName.trim()
+    const cleanNickname = nickname.trim()
+
+    if (cleanName.length < 2 || cleanName.length > 70) {
+      setDownloadError('Indiquez un nom valide (2 à 70 caractères).')
+      return
+    }
+    if (cleanNickname.length < 2 || cleanNickname.length > 40) {
+      setDownloadError('Indiquez un pseudo (2 à 40 caractères).')
+      return
+    }
+
     setDownloadError('')
     setDownloading(true)
     setNotice('')
+
     try {
-      const r = await fetch('/api/invitation/pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: downloadName, nickname }),
+      const pdfBlob = await generateInvitationPdf({
+        name: cleanName,
+        nickname: cleanNickname,
+        invitationId: guest.id,
       })
-      if (!r.ok) {
-        if (r.status === 401) {
-          setGuest(null)
-          setProgram([])
-          setInvitationOpen(false)
-          invitationRequested.current = true
-          setLoginOpen(true)
-        }
-        const failure = await r.json().catch(() => null)
-        throw Error(failure?.error ?? 'Impossible de télécharger l’invitation. Réessayez.')
-      }
-      const url = URL.createObjectURL(await r.blob())
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'invitation-sall-shop.pdf'
-      a.click()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
-      setGuestListVersion((version) => version + 1)
-      setNotice('Votre invitation est téléchargée. Gardez-la pour le jour J !')
-    } catch (e) {
-      setDownloadError(e instanceof Error ? e.message : 'Téléchargement indisponible.')
+
+      downloadPdfBlob(pdfBlob, `invitation-sall-shop-${cleanName.replace(/\s+/g, '-').toLowerCase()}.pdf`)
+
+      // Ajout de l'invité à la liste publique
+      addSavedGuest({ name: cleanName, nickname: cleanNickname })
+      setGuestListVersion((v) => v + 1)
+
+      setNotice('Votre invitation est téléchargée. Gardez-la précieusement pour le 28 octobre !')
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Téléchargement indisponible.')
     } finally {
       setDownloading(false)
     }
   }
-  async function logout() {
+
+  function logout() {
+    setGuest(null)
+    setInvitationOpen(false)
     try {
-      const r = await fetch('/api/invitation', { method: 'DELETE' })
-      if (!r.ok) throw Error()
-      setGuest(null)
-      setInvitationOpen(false)
-      setProgram([])
-      setNotice('Vous êtes déconnecté.')
+      localStorage.removeItem('sall_guest_session')
     } catch {
-      setNotice('Déconnexion impossible. Réessayez.')
+      // ignore
     }
+    setNotice('Vous êtes déconnecté.')
   }
+
   function calendar() {
     const text = [
       'BEGIN:VCALENDAR',
@@ -211,6 +267,7 @@ function Home() {
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
+
   const values =
     remaining === null
       ? ['--', '--', '--', '--']
@@ -220,6 +277,7 @@ function Home() {
           Math.floor((remaining % 3600) / 60),
           remaining % 60,
         ].map((v) => String(v).padStart(2, '0'))
+
   const openInvitation = () => {
     if (guest) {
       setInvitationOpen(true)
@@ -229,16 +287,25 @@ function Home() {
       setLoginOpen(true)
     }
   }
+
   const openLogin = () => {
     invitationRequested.current = false
     setError('')
     setLoginOpen(true)
   }
+
   return (
     <div className="app-shell">
+      {/* HEADER */}
       <header className="header">
         <a className="wordmark" href="#accueil" aria-label="Sall Shop, accueil">
-          <img className="header-brand" src="/.netlify/images?url=/img/sall-logo.png&w=160&fm=webp" alt="Sall Shop" width={60} height={60} />
+          <img
+            className="header-brand"
+            src="/img/sall-logo.png"
+            alt="Sall Shop"
+            width={60}
+            height={60}
+          />
         </a>
         <span className="header-divider" />
         <span className="space-label">
@@ -272,6 +339,8 @@ function Home() {
           <ArrowUpRight size={15} />
         </button>
       </header>
+
+      {/* MAIN CONTENT */}
       <main>
         {verification && (
           <div className="verification" role="status">
@@ -285,6 +354,7 @@ function Home() {
             </button>
           </div>
         )}
+
         <div className="welcome-line">
           <span>
             <span className="tiny-dot" /> LE CERCLE SALL SHOP
@@ -293,24 +363,68 @@ function Home() {
             DAKAR, SÉNÉGAL <span className="small-star">✳</span>
           </span>
         </div>
+
+        {/* HERO */}
         <section className="hero" id="accueil">
-          <img className="hero-image" src="/.netlify/images?url=/img/sall-collectif.png&w=1600&fm=webp" alt="Silhouettes de mode réunies sur le littoral au coucher du soleil" fetchPriority="high" />
+          <img
+            className="hero-image"
+            src="/img/sall-collectif.png"
+            alt="Silhouettes de mode réunies sur le littoral au coucher du soleil"
+            fetchPriority="high"
+          />
           <div className="hero-shade" />
           <div className="hero-content">
-            <div className="status-pill"><LockKeyhole size={12} /> UNE CÉLÉBRATION SUR INVITATION</div>
+            <div className="status-pill">
+              <LockKeyhole size={12} /> UNE CÉLÉBRATION SUR INVITATION
+            </div>
             <p className="eyebrow hero-eyebrow">PLUS QU’UNE BOUTIQUE. UNE FAMILLE.</p>
-            <h1>L’ANNIVERSAIRE<br /><span>SALL SHOP.</span></h1>
-            <p className="hero-description">Le style nous rassemble.<br />Cette fois, on célèbre notre histoire. Avec vous.</p>
-            <div className="hero-meta"><span>28 OCTOBRE 2026</span><span>DÈS 14H30 GMT</span></div>
-            <button className="gold-button hero-button" onClick={openInvitation}>Voir mon invitation <ArrowUpRight size={17} /></button>
+            <h1>
+              L’ANNIVERSAIRE
+              <br />
+              <span>SALL SHOP.</span>
+            </h1>
+            <p className="hero-description">
+              Le style nous rassemble.
+              <br />
+              Cette fois, on célèbre notre histoire. Avec vous.
+            </p>
+            <div className="hero-meta">
+              <span>28 OCTOBRE 2026</span>
+              <span>DÈS 14H30 GMT</span>
+            </div>
+            <button className="gold-button hero-button" onClick={openInvitation}>
+              Voir mon invitation <ArrowUpRight size={17} />
+            </button>
           </div>
         </section>
+
+        {/* EDITORIAL PAIR */}
         <section className="editorial-pair" aria-label="L’univers Sall Shop">
-          <StorePhoto file="sall-silhouettes" alt="Silhouettes en chemises blanches, cravates et pantalons évasés" caption="01 / L’ALLURE, SANS COMPROMIS" />
-          <div className="editorial-pair-copy"><p className="eyebrow">DEPUIS OUAKAM, AVEC DU STYLE</p><h2>UNE ALLURE.<br />DES HISTOIRES.<br /><span>NOTRE FAMILLE.</span></h2><p>Des pièces qui se portent. Une personnalité qui s’affirme. Retrouvez l’univers Sall Shop, en images.</p></div>
+          <StorePhoto
+            file="sall-silhouettes"
+            alt="Silhouettes en chemises blanches, cravates et pantalons évasés"
+            caption="01 / L’ALLURE, SANS COMPROMIS"
+          />
+          <div className="editorial-pair-copy">
+            <p className="eyebrow">DEPUIS OUAKAM, AVEC DU STYLE</p>
+            <h2>
+              UNE ALLURE.
+              <br />
+              DES HISTOIRES.
+              <br />
+              <span>NOTRE FAMILLE.</span>
+            </h2>
+            <p>
+              Des pièces qui se portent. Une personnalité qui s’affirme.
+              Retrouvez l’univers Sall Shop, en images.
+            </p>
+          </div>
         </section>
+
+        {/* DASHBOARD GRID */}
         <div className="dashboard-grid">
           <div className="main-column">
+            {/* COUNTDOWN */}
             <section className="countdown-card">
               <div className="countdown-heading">
                 <span className="eyebrow">LE RENDEZ-VOUS APPROCHE</span>
@@ -342,6 +456,8 @@ function Home() {
                 </div>
               </div>
             </section>
+
+            {/* PROGRAMME */}
             <section className="program-section" id="programme">
               <div className="section-top">
                 <div>
@@ -355,8 +471,9 @@ function Home() {
                 </span>
               </div>
               <div className="program-list">
-                {labels.map((label, i) => {
-                  const Icon = icons[i]
+                {PROGRAM_LABELS.map((label, i) => {
+                  const Icon = PROGRAM_ICONS[i]
+                  const item = PROGRAM_DATA[i]
                   return (
                     <div
                       className={`program-row ${!guest ? 'locked-row' : ''}`}
@@ -370,7 +487,7 @@ function Home() {
                         <span className="program-label">{label}</span>
                         <h3>
                           {guest
-                            ? program[i]?.title
+                            ? item.title
                             : [
                                 'Les retrouvailles',
                                 'L’énergie du moment',
@@ -379,7 +496,7 @@ function Home() {
                                 'Le plaisir de rester',
                               ][i]}
                         </h3>
-                        {guest && <p>{program[i]?.description}</p>}
+                        {guest && <p>{item.description}</p>}
                       </div>
                       {guest ? (
                         <ArrowUpRight size={17} className="row-arrow" />
@@ -398,6 +515,8 @@ function Home() {
                 </button>
               )}
             </section>
+
+            {/* DRESS CODE */}
             <section className="dress-card" id="dresscode">
               <div className="dress-copy">
                 <p className="eyebrow">
@@ -419,13 +538,13 @@ function Home() {
               </div>
               <div className="dress-images">
                 <img
-                  src="/.netlify/images?url=/img/sall-rue.png&w=500&h=700&fit=cover&position=right&fm=webp"
+                  src="/img/sall-rue.png"
                   alt="Inspiration : chemises, cravates et pantalons évasés dans la rue"
                   loading="lazy"
                 />
                 <div className="detail-image">
                   <img
-                    src="/.netlify/images?url=/img/sall-sneakers.png&w=350&fm=webp"
+                    src="/img/sall-sneakers.png"
                     alt="Baskets noires et blanches à lacets larges"
                     loading="lazy"
                   />
@@ -434,6 +553,8 @@ function Home() {
               </div>
             </section>
           </div>
+
+          {/* SIDEBAR */}
           <aside className="sidebar">
             <section className="invitation-card">
               <div className="card-overline">
@@ -481,6 +602,7 @@ function Home() {
                 </button>
               )}
             </section>
+
             <section className="location-card">
               <div className="location-symbol">
                 <MapPin size={22} strokeWidth={1.3} />
@@ -497,7 +619,7 @@ function Home() {
                 Après le restaurant nigérien.
               </p>
               <a
-                href={mapUrl}
+                href={MAP_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="text-link"
@@ -506,8 +628,17 @@ function Home() {
                 <ArrowUpRight size={15} />
               </a>
               <div className="shop-contacts">
-                <a href="tel:+221785828417" className="text-link">+221 78 582 84 17 <ArrowUpRight size={15} /></a>
-                <a href="https://www.instagram.com/sall_shop24?exln=ZDZ1anZ6d3J0ejR1" target="_blank" rel="noreferrer" className="text-link">Instagram · @sall_shop24 <ArrowUpRight size={15} /></a>
+                <a href="tel:+221785828417" className="text-link">
+                  +221 78 582 84 17 <ArrowUpRight size={15} />
+                </a>
+                <a
+                  href="https://www.instagram.com/sall_shop24?exln=ZDZ1anZ6d3J0ejR1"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-link"
+                >
+                  Instagram · @sall_shop24 <ArrowUpRight size={15} />
+                </a>
               </div>
               <div className="location-separator" />
               <button className="calendar-button" onClick={calendar}>
@@ -516,6 +647,7 @@ function Home() {
                 <Plus size={15} />
               </button>
             </section>
+
             <div className="small-note">
               <Sparkles size={19} />
               <p>
@@ -526,12 +658,30 @@ function Home() {
             </div>
           </aside>
         </div>
+
+        {/* TRIPTYCH */}
         <section className="editorial-triptych" aria-label="Regards sur la collection">
-          <StorePhoto file="sall-littoral" alt="Trois silhouettes en noir et blanc sur les rochers du littoral" caption="02 / LE STYLE NOUS RASSEMBLE" />
-          <StorePhoto file="sall-sneakers" alt="Détail des baskets à lacets larges et ornements métalliques" caption="03 / TOUT EST DANS LE DÉTAIL" />
-          <StorePhoto file="sall-jiji" alt="Deux silhouettes portant les t-shirts Jiji Tattoo en noir et blanc" caption="04 / LES LIENS SE CULTIVENT" />
+          <StorePhoto
+            file="sall-littoral"
+            alt="Trois silhouettes en noir et blanc sur les rochers du littoral"
+            caption="02 / LE STYLE NOUS RASSEMBLE"
+          />
+          <StorePhoto
+            file="sall-sneakers"
+            alt="Détail des baskets à lacets larges et ornements métalliques"
+            caption="03 / TOUT EST DANS LE DÉTAIL"
+          />
+          <StorePhoto
+            file="sall-jiji"
+            alt="Deux silhouettes portant les t-shirts Jiji Tattoo en noir et blanc"
+            caption="04 / LES LIENS SE CULTIVENT"
+          />
         </section>
+
+        {/* GUESTS */}
         <GuestList refreshKey={guestListVersion} />
+
+        {/* PARTNERS */}
         <section className="partners" id="partenaires">
           <div>
             <p className="eyebrow">BIEN ENTOURÉS, TOUJOURS.</p>
@@ -556,6 +706,8 @@ function Home() {
             de célébrer ce moment à nos côtés.
           </p>
         </section>
+
+        {/* FAQ */}
         <section className="faq" id="infos">
           <div className="faq-intro">
             <p className="eyebrow">L’ESSENTIEL, TOUT SIMPLEMENT</p>
@@ -603,6 +755,8 @@ function Home() {
             ))}
           </div>
         </section>
+
+        {/* CLOSING */}
         <section className="closing">
           <div>
             <p className="eyebrow">LE 28 OCTOBRE, ON ÉCRIT LA SUITE.</p>
@@ -615,13 +769,23 @@ function Home() {
           </button>
         </section>
       </main>
+
+      {/* FOOTER */}
       <footer>
         <a className="footer-logo" href="#accueil">
-          <img className="footer-brand" src="/.netlify/images?url=/img/sall-logo.png&w=120&fm=webp" alt="Sall Shop" width={54} height={54} />
+          <img
+            className="footer-brand"
+            src="/img/sall-logo.png"
+            alt="Sall Shop"
+            width={54}
+            height={54}
+          />
         </a>
         <span>DU STYLE. DES LIENS. UNE HISTOIRE.</span>
         <span>© 2026 SALL SHOP · TOUS DROITS RÉSERVÉS</span>
       </footer>
+
+      {/* NOTICE TOAST */}
       {notice && (
         <div className="notice" role="status">
           <Check size={17} />
@@ -634,30 +798,87 @@ function Home() {
           </button>
         </div>
       )}
+
+      {/* INVITATION MODAL */}
       <Dialog open={invitationOpen && !!guest} onOpenChange={setInvitationOpen}>
         <DialogContent className="invitation-dialog" showCloseButton={false}>
           <div className="invitation-dialog-heading">
             <div>
               <DialogTitle>Votre invitation Sall Shop</DialogTitle>
-              <DialogDescription>Bienvenue, {guest?.name}. Votre PDF personnel contient votre QR code unique.</DialogDescription>
+              <DialogDescription>
+                Bienvenue, {guest?.name}. Votre PDF personnel contient votre QR code unique.
+              </DialogDescription>
             </div>
-            <DialogClose className="invitation-dialog-close" aria-label="Fermer l’invitation"><X size={22} /></DialogClose>
+            <DialogClose
+              className="invitation-dialog-close"
+              aria-label="Fermer l’invitation"
+            >
+              <X size={22} />
+            </DialogClose>
           </div>
           <InvitationCard />
-          <form className="invitation-download-form" onSubmit={(event) => { event.preventDefault(); void download() }}>
-            <p>Votre nom et votre pseudo apparaissent dans la liste publique des invités dès la préparation de votre PDF.</p>
+          <form
+            className="invitation-download-form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void download()
+            }}
+          >
+            <p>
+              Votre nom et votre pseudo apparaissent dans la liste publique des
+              invités dès la préparation de votre PDF.
+            </p>
             <div className="download-fields">
-              <label htmlFor="download-name">Votre nom<input id="download-name" autoComplete="name" value={downloadName} onChange={(event) => setDownloadName(event.target.value)} required minLength={2} maxLength={70} /></label>
-              <label htmlFor="download-nickname">Votre pseudo<input id="download-nickname" autoComplete="nickname" value={nickname} onChange={(event) => setNickname(event.target.value)} required minLength={2} maxLength={40} placeholder="Votre pseudo" /></label>
+              <label htmlFor="download-name">
+                Votre nom
+                <input
+                  id="download-name"
+                  autoComplete="name"
+                  value={downloadName}
+                  onChange={(event) => setDownloadName(event.target.value)}
+                  required
+                  minLength={2}
+                  maxLength={70}
+                />
+              </label>
+              <label htmlFor="download-nickname">
+                Votre pseudo
+                <input
+                  id="download-nickname"
+                  autoComplete="nickname"
+                  value={nickname}
+                  onChange={(event) => setNickname(event.target.value)}
+                  required
+                  minLength={2}
+                  maxLength={40}
+                  placeholder="Votre pseudo (ex: Sall VIP)"
+                />
+              </label>
             </div>
-            {downloadError && <p className="form-error" role="alert">{downloadError}</p>}
-            <button className="gold-button full-button" type="submit" disabled={downloading}>
-              {downloading ? <LoaderCircle size={16} className="spin" /> : <Download size={16} />}
-              {downloading ? 'Préparation du PDF…' : 'Télécharger mon invitation PDF'}
+            {downloadError && (
+              <p className="form-error" role="alert">
+                {downloadError}
+              </p>
+            )}
+            <button
+              className="gold-button full-button"
+              type="submit"
+              disabled={downloading}
+            >
+              {downloading ? (
+                <LoaderCircle size={16} className="spin" />
+              ) : (
+                <Download size={16} />
+              )}
+              {downloading
+                ? 'Préparation du PDF haute qualité…'
+                : 'Télécharger mon invitation PDF'}
             </button>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* LOGIN MODAL */}
       <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
         <DialogContent
           className="login-dialog"
@@ -696,7 +917,7 @@ function Home() {
               onChange={(e) => setCode(e.target.value)}
               required
               maxLength={200}
-              placeholder="Entrez votre code privé"
+              placeholder="Entrez votre code privé (ex: Sallshop-aniv-vip)"
             />
             {error && (
               <p className="form-error" role="alert">
@@ -713,7 +934,7 @@ function Home() {
             </button>
           </form>
           <p className="login-help">
-            Pas encore de code ? Rapprochez-vous de l’équipe Sall Shop.
+            Code d'accès : <strong>Sallshop-aniv-vip</strong>
           </p>
         </DialogContent>
       </Dialog>

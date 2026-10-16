@@ -5,9 +5,7 @@ export function InvitationCard() {
       <figure className="invitation-polaroid">
         <div className="invitation-photo">
           <img
-            src="/.netlify/images?url=/img/sall-editorial.png&w=900&fm=webp"
-            srcSet="/.netlify/images?url=/img/sall-editorial.png&w=450&fm=webp 450w, /.netlify/images?url=/img/sall-editorial.png&w=900&fm=webp 900w"
-            sizes="(min-width: 760px) 40vw, 90vw"
+            src="/img/sall-editorial.png"
             alt="Deux silhouettes en vestes de cuir sur un littoral rocheux, photographie de mode en noir et blanc"
             width={654}
             height={591}
@@ -25,7 +23,7 @@ export function InvitationCard() {
       <div className="invitation-paper">
         <img
           className="invitation-brand"
-          src="/.netlify/images?url=/img/sall-logo.png&w=240&fm=webp"
+          src="/img/sall-logo.png"
           alt="Sall Shop — boutique de vêtements et accessoires"
           width={94}
           height={94}

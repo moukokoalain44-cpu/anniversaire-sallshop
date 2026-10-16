@@ -1,5 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=DM+Sans:wght@300;400;500;600;700&family=Parisienne&display=swap');
-@import 'tailwindcss' source('../');
+@import 'tailwindcss';
 @import 'tw-animate-css';
 @custom-variant dark (&:is(.dark *));
 :root {

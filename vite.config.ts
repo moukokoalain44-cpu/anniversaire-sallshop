@@ -1,12 +1,13 @@
 import { defineConfig } from 'vite'
-import { tanstackStart } from '@tanstack/react-start/plugin/vite'
-import viteReact from '@vitejs/plugin-react'
+import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import netlify from '@netlify/vite-plugin-tanstack-start'
+import path from 'node:path'
 
-const config = defineConfig({
-  resolve: { tsconfigPaths: true },
-  plugins: [tailwindcss(), netlify(), tanstackStart(), viteReact()],
+export default defineConfig({
+  plugins: [tailwindcss(), react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
 })
-
-export default config
